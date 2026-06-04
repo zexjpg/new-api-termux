@@ -37,11 +37,11 @@ chmod 755 "$DEB_ROOT/$PREFIX/bin/$PKG_NAME"
 # Create start convenience script
 cat > "$DEB_ROOT/$PREFIX/bin/new-api-start" << 'START'
 #!/data/data/com.termux/files/usr/bin/bash
-DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$DIR/../lib/new-api" 2>/dev/null || cd ~
-mkdir -p logs
+DATA_DIR="$HOME/newapi"
+mkdir -p "$DATA_DIR"
+cd "$DATA_DIR"
 echo "Starting New API on port 3000..."
-exec new-api --port 3000 --log-dir logs "$@"
+exec new-api --port 3000 --log-dir "$DATA_DIR/logs" "$@"
 START
 chmod 755 "$DEB_ROOT/$PREFIX/bin/new-api-start"
 
@@ -70,8 +70,10 @@ set -e
 echo ""
 echo " New API for Termux installed!"
 echo ""
-echo " Quick start:  new-api --port 3000 --log-dir ~/newapi-logs"
-echo " Or use:       new-api-start"
+echo " Quick start:  new-api-start"
+echo "   - runs on port 3000, data/logs in ~/newapi/"
+echo ""
+echo " Manual start: new-api --port 3000 --log-dir ~/newapi/logs"
 echo " Web UI:       http://localhost:3000"
 echo ""
 POSTINST

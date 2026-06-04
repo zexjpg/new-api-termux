@@ -20,6 +20,8 @@ jobs:
       version: ${{ steps.check.outputs.version }}
       built: ${{ steps.build.outputs.built }}
 
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -76,8 +78,6 @@ jobs:
 
       - name: Create Release and upload assets
         if: steps.check.outputs.skip == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.check.outputs.version }}"
           DEB_FILE="${{ steps.build.outputs.deb_file }}"

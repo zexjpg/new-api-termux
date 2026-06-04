@@ -33,9 +33,9 @@ jobs:
             VERSION="${{ inputs.force_version }}"
           else
             echo "Fetching latest release from QuantumNous/new-api..."
-            RESP=$(curl -sL https://api.github.com/repos/QuantumNous/new-api/releases/latest)
-            VERSION=$(echo "$RESP" | grep -o '"tag_name":"[^"]*"' | cut -d'"' -f4)
-            if [ -z "$VERSION" ]; then
+            RESP=$(gh api /repos/QuantumNous/new-api/releases/latest)
+            VERSION=$(echo "$RESP" | jq -r '.tag_name')
+            if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
               echo "Failed to detect upstream version"
               exit 1
             fi
@@ -56,8 +56,7 @@ jobs:
         if: steps.check.outputs.skip == 'false'
         run: |
           VERSION="${{ steps.check.outputs.version }}"
-          VER_NO_V="${VERSION#v}"
-          URL="https://github.com/QuantumNous/new-api/releases/download/${VERSION}/new-api-arm64-${VER_NO_V}"
+          URL="https://github.com/QuantumNous/new-api/releases/download/${VERSION}/new-api-arm64-${VERSION}"
           echo "Downloading: $URL"
           curl -fL -o new-api-bin "$URL" --connect-timeout 15 --retry 3
           chmod +x new-api-bin
@@ -78,12 +77,11 @@ jobs:
       - name: Create Release and upload assets
         if: steps.check.outputs.skip == 'false'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.check.outputs.version }}"
           DEB_FILE="${{ steps.build.outputs.deb_file }}"
 
-          # Create release
           gh release create "$VERSION" \
             "$DEB_FILE" \
             --repo "${{ github.repository }}" \
@@ -100,5 +98,4 @@ jobs:
             - \`new-api-start\` - convenience start script (port 3000)
             - \`new-api-bin\` - the glibc-linked aarch64 binary
             " || echo "Release may already exist, trying to upload asset..."
-          # Upload asset if release already existed
           gh release upload "$VERSION" "$DEB_FILE" --repo "${{ github.repository }}" --clobber 2>/dev/null || true

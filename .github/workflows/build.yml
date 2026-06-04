@@ -1,0 +1,104 @@
+name: Build and Release
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      force_version:
+        description: 'Force specific version (e.g. v1.0.0-rc.10). Leave empty for auto-detect.'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      built: ${{ steps.build.outputs.built }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check latest upstream release
+        id: check
+        run: |
+          if [ -n "${{ inputs.force_version }}" ]; then
+            VERSION="${{ inputs.force_version }}"
+          else
+            echo "Fetching latest release from QuantumNous/new-api..."
+            RESP=$(curl -sL https://api.github.com/repos/QuantumNous/new-api/releases/latest)
+            VERSION=$(echo "$RESP" | grep -o '"tag_name":"[^"]*"' | cut -d'"' -f4)
+            if [ -z "$VERSION" ]; then
+              echo "Failed to detect upstream version"
+              exit 1
+            fi
+          fi
+          echo "Upstream version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          # Check if we already have this version tagged
+          if git tag -l "$VERSION" | grep -q .; then
+            echo "Version $VERSION already packaged. Skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "New version detected. Building..."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download upstream binary
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          VERSION="${{ steps.check.outputs.version }}"
+          VER_NO_V="${VERSION#v}"
+          URL="https://github.com/QuantumNous/new-api/releases/download/${VERSION}/new-api-arm64-${VER_NO_V}"
+          echo "Downloading: $URL"
+          curl -fL -o new-api-bin "$URL" --connect-timeout 15 --retry 3
+          chmod +x new-api-bin
+          file new-api-bin
+
+      - name: Build .deb package
+        id: build
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          VERSION="${{ steps.check.outputs.version }}"
+          VER_NO_V="${VERSION#v}"
+          bash scripts/build-deb.sh "$VER_NO_V" new-api-bin .
+
+          DEB_FILE="new-api_${VER_NO_V}_aarch64.deb"
+          echo "built=true" >> "$GITHUB_OUTPUT"
+          echo "deb_file=$DEB_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Create Release and upload assets
+        if: steps.check.outputs.skip == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.check.outputs.version }}"
+          DEB_FILE="${{ steps.build.outputs.deb_file }}"
+
+          # Create release
+          gh release create "$VERSION" \
+            "$DEB_FILE" \
+            --repo "${{ github.repository }}" \
+            --title "New API $VERSION for Termux" \
+            --notes "Automated build of [QuantumNous/new-api $VERSION](https://github.com/QuantumNous/new-api/releases/tag/$VERSION)
+
+            ## Install
+            \`\`\`bash
+            bash -c \"\$(curl -L https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh)\"
+            \`\`\`
+
+            ## Package contents
+            - \`new-api\` - launcher script (unset LD_PRELOAD, exec via glibc)
+            - \`new-api-start\` - convenience start script (port 3000)
+            - \`new-api-bin\` - the glibc-linked aarch64 binary
+            " || echo "Release may already exist, trying to upload asset..."
+          # Upload asset if release already existed
+          gh release upload "$VERSION" "$DEB_FILE" --repo "${{ github.repository }}" --clobber 2>/dev/null || true

@@ -20,7 +20,7 @@ ARCH=$(uname -m)
 if [ "$VERSION" = "latest" ]; then
   log "Detecting latest version..."
   VERSION=$(curl -sL --connect-timeout 5 -o /dev/null -w '%{url_effective}' \
-    "https://github.com/$REPO/releases/latest" 2>/dev/null | grep -o 'tag/v[0-9.]*' | grep -o '[0-9].*')
+    "https://github.com/$REPO/releases/latest" 2>/dev/null | grep -o 'tag/v[^"]*' | sed 's/^tag\/v//')
   if [ -z "$VERSION" ]; then
     VERSION=$(curl -sL --connect-timeout 10 \
       "$MIRROR/https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \

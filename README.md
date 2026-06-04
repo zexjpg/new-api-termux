@@ -34,5 +34,5 @@ Dependencies: `glibc`
 
 ## Auto-build
 
-This repo checks [QuantumNous/new-api](https://github.com/QuantumNous/new-api) every 6 hours
+This repo checks [QuantumNous/new-api](https://github.com/QuantumNous/new-api) daily
 for new releases and automatically builds updated .deb packages.

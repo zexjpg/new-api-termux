@@ -28,12 +28,10 @@ cat > "$DEB_ROOT/$PREFIX/bin/$PKG_NAME" << 'LAUNCHER'
 unset LD_PRELOAD
 THIS="${BASH_SOURCE[0]}"
 DIR="$(cd "$(dirname "$THIS")" && pwd -P)"
-export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/glibc/lib
-# Force pure-Go DNS resolver to avoid glibc NSS dlopen() failure on Termux
-export GODEBUG=netdns=go
-# Point to Termux CA certificate bundle for TLS verification
 export SSL_CERT_FILE=/data/data/com.termux/files/usr/etc/tls/cert.pem
-exec /data/data/com.termux/files/usr/glibc/lib/ld-linux-aarch64.so.1 \
+exec proot -b /data/data/com.termux/files/usr/etc/resolv.conf:/etc/resolv.conf \
+  /data/data/com.termux/files/usr/glibc/lib/ld-linux-aarch64.so.1 \
+  --library-path /data/data/com.termux/files/usr/glibc/lib \
   "$DIR/../lib/new-api/new-api-bin" "$@"
 LAUNCHER
 chmod 755 "$DEB_ROOT/$PREFIX/bin/$PKG_NAME"
@@ -61,7 +59,7 @@ Maintainer: $MAINTAINER
 Section: utils
 Priority: optional
 Installed-Size: $INSTALLED_SIZE
-Depends: glibc
+Depends: glibc, proot
 Description: New API - LLM gateway and AI resource management for Termux
  Unified API gateway for OpenAI, Claude, Gemini, DeepSeek and more.
 Homepage: https://github.com/QuantumNous/new-api
@@ -71,6 +69,28 @@ CONTROL
 cat > "$DEB_ROOT/DEBIAN/postinst" << 'POSTINST'
 #!/data/data/com.termux/files/usr/bin/bash
 set -e
+# Fix glibc linker scripts (.so) that are actually GNU ld scripts,
+# not valid ELF shared libraries. Replace them with symlinks to
+# the actual versioned runtime libraries (.so.6).
+GLIBC_LIB=/data/data/com.termux/files/usr/glibc/lib
+if [ -d "$GLIBC_LIB" ]; then
+  for f in "$GLIBC_LIB"/*.so; do
+    if [ -f "$f" ] && [ ! -L "$f" ]; then
+      magic=$(head -c 4 "$f" 2>/dev/null)
+      if [ "$magic" = "/* G" ]; then
+        base="${f%.so}"
+        for ver in 6 3 2 1 0; do
+          real="${base}.so.${ver}"
+          if [ -f "$real" ]; then
+            mv "$f" "${f}.script"
+            ln -s "$(basename "$real")" "$f"
+            break
+          fi
+        done
+      fi
+    fi
+  done
+fi
 echo ""
 echo " New API for Termux installed!"
 echo ""
@@ -79,6 +99,9 @@ echo "   - runs on port 3000, data/logs in ~/newapi/"
 echo ""
 echo " Manual start: new-api --port 3000 --log-dir ~/newapi/logs"
 echo " Web UI:       http://localhost:3000"
+echo ""
+echo " Note: On read-only /etc filesystems, proot transparently"
+echo "       resolves /etc/resolv.conf for DNS connectivity."
 echo ""
 POSTINST
 chmod 755 "$DEB_ROOT/DEBIAN/postinst"

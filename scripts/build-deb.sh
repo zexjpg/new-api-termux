@@ -29,6 +29,10 @@ unset LD_PRELOAD
 THIS="${BASH_SOURCE[0]}"
 DIR="$(cd "$(dirname "$THIS")" && pwd -P)"
 export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/glibc/lib
+# Force pure-Go DNS resolver to avoid glibc NSS dlopen() failure on Termux
+export GODEBUG=netdns=go
+# Point to Termux CA certificate bundle for TLS verification
+export SSL_CERT_FILE=/data/data/com.termux/files/usr/etc/tls/cert.pem
 exec /data/data/com.termux/files/usr/glibc/lib/ld-linux-aarch64.so.1 \
   "$DIR/../lib/new-api/new-api-bin" "$@"
 LAUNCHER
